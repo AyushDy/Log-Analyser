@@ -50,7 +50,6 @@ Add the following variables to your .env file:
 | `LOG_UPLOAD_BATCH_SIZE`    | Batch size for log uploads.                                                 | `10000`                    |
 | `MAX_CONCURRENT_BATCHES`   | Maximum number of concurrent batches for processing.                        | `8`                        |
 | `STREAM_HIGH_WATER_MARK`   | High water mark for stream processing.                                       | `16384`                    |
-| `LOG_LEVEL`                | Log level for application logging.                                          | `info`                     |
 | `PORT`                     | Port on which the application will run.                                      | `3000`                     |
 
 ### 4. Set Up MongoDB
