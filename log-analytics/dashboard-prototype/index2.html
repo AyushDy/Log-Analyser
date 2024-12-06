@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Analytics Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e5e5e5;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: none;
+            color: black;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            font-size: 16px;
+        }
+        .tab.active {
+            border-bottom: 2px solid #007bff;
+            color: #007bff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        h2 { 
+            color: #333;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .error { 
+            color: #dc3545;
+            background: #f8d7da;
+        }
+        .success { 
+            color: #28a745;
+            background: #d4edda;
+        }
+        .log-entry {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background: #f8f9fa;
+        }
+        pre {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f1f1f1;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        #searchResults {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('upload')">Upload Logs</button>
+            <button class="tab" onclick="switchTab('search')">Search Logs</button>
+        </div>
+
+        <div id="upload" class="tab-content active">
+            <div class="tabs">
+                <button class="tab active" onclick="switchUploadTab('single')">Single File</button>
+                <button class="tab" onclick="switchUploadTab('batch')">Batch Upload</button>
+            </div>
+
+            <div id="single" class="tab-content active">
+                <div class="form-group">
+                    <label for="singleFile">Select Log File:</label>
+                    <input type="file" id="singleFile" accept=".txt,.json,.csv">
+                </div>
+                <button onclick="uploadSingle()">Upload</button>
+                <div id="singleStatus" class="status"></div>
+            </div>
+
+            <div id="batch" class="tab-content">
+                <div class="form-group">
+                    <label for="batchFiles">Select Multiple Log Files:</label>
+                    <input type="file" id="batchFiles" accept=".txt,.json,.csv" multiple>
+                </div>
+                <button onclick="uploadBatch()">Upload Batch</button>
+                <div id="batchStatus" class="status"></div>
+            </div>
+        </div>
+
+        <div id="search" class="tab-content">
+            <h2>Search Logs</h2>
+            <div class="form-group">
+                <label for="startTime">Start Time:</label>
+                <input type="datetime-local" id="startTime">
+            </div>
+            <div class="form-group">
+                <label for="endTime">End Time:</label>
+                <input type="datetime-local" id="endTime">
+            </div>
+            <div class="form-group">
+                <label for="level">Log Level:</label>
+                <select id="level">
+                    <option value="">All</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="keyword">Keyword:</label>
+                <input type="text" id="keyword" placeholder="Search term...">
+            </div>
+            <button onclick="searchLogs()">Search</button>
+            <div id="searchResults"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api/logs';
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tabs > .tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+
+            document.querySelectorAll('.container > .tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        function switchUploadTab(tabId) {
+            document.querySelectorAll('#upload .tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`#upload .tab[onclick="switchUploadTab('${tabId}')"]`).classList.add('active');
+
+            document.querySelectorAll('#upload .tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        async function uploadSingle() {
+            const fileInput = document.getElementById('singleFile');
+            const statusDiv = document.getElementById('singleStatus');
+
+            if (!fileInput.files.length) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Please select a file';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch(`${API_URL}/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log(data);
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `File processed successfully:\n` +
+                        `JSON Logs: ${data.categorizedResults.jsonLogs}\n` +
+                        `Nginx Logs: ${data.categorizedResults.nginxLogs}\n` +
+                        `Custom Logs: ${data.categorizedResults.customLogs}\n` +
+                        `Unknown: ${data.categorizedResults.unknownLogs}`;
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Upload failed: ${error.message}`;
+            }
+        }
+
+        async function uploadBatch() {
+            const fileInput = document.getElementById('batchFiles');
+            const statusDiv = document.getElementById('batchStatus');
+
+            if (!fileInput.files.length) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Please select files';
+                return;
+            }
+
+            const formData = new FormData();
+            Array.from(fileInput.files).forEach(file => {
+                formData.append('files', file);
+            });
+
+            try {
+                const response = await fetch(`${API_URL}/batch-upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                console.log(data);
+                if (data.success) {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `Processed ${data.files.length} files:\n\n` +
+                        data.files.map(file => 
+                            `${file.fileName}:\n` +
+                            `  JSON Logs: ${file.categorizedResults.jsonLogs.success.length}\n` +
+                            `  Nginx Logs: ${file.categorizedResults.nginxLogs.success.length}\n` +
+                            `  Custom Logs: ${file.categorizedResults.customLogs.success.length}\n` +
+                            `  Unknown: ${file.categorizedResults.unknownLogs.length}`
+                        ).join('\n\n');
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Batch upload failed: ${error.message}`;
+            }
+        }
+
+        async function searchLogs() {
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+            const level = document.getElementById('level').value;
+            const keyword = document.getElementById('keyword').value;
+            const resultsDiv = document.getElementById('searchResults');
+
+            const params = new URLSearchParams();
+            if (startTime) params.append('startTime', new Date(startTime).toISOString());
+            if (endTime) params.append('endTime', new Date(endTime).toISOString());
+            if (level) params.append('level', level);
+            if (keyword) params.append('keyword', keyword);
+
+            try {
+                const response = await fetch(`${API_URL}/search?${params}`);
+                const data = await response.json();
+                console.log(data);
+                if (data.logs && data.logs.length > 0) {
+                    const logsHtml = data.logs.map(log => `
+                        <div class="log-entry">
+                            <strong>Timestamp:</strong> ${new Date(log.timestamp).toLocaleString()}<br>
+                            <strong>Level:</strong> ${log.level}<br>
+                            <strong>Source:</strong> ${log.source}<br>
+                            <strong>Message:</strong> ${log.message}<br>
+                            <pre>${log.rawLog}</pre>
+                        </div>
+                    `).join('');
+                    
+                    resultsDiv.innerHTML = `
+                        <p>Found ${data.pagination.totalItems} logs (Page ${data.pagination.currentPage} of ${data.pagination.totalPages})</p>
+                        ${logsHtml}
+                    `;
+                } else {
+                    resultsDiv.innerHTML = '<p>No logs found matching your criteria</p>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
